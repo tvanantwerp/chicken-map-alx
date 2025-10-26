@@ -107,13 +107,20 @@ def download_dataset(name: str, config: dict, data_dir: Path) -> None:
     url = config["url"]
     extract_dir = config.get("extract_dir")
 
-    # Determine output path
+    # Determine output path and what to check for existing data
     if extract_dir:
         output_path = data_dir.joinpath(filename)
         final_dir = data_dir.joinpath(extract_dir)
+        check_path = final_dir  # Check if extracted directory exists
     else:
         output_path = data_dir.joinpath(filename)
         final_dir = None
+        check_path = output_path  # Check if file exists
+
+    # Skip if data already exists
+    if check_path.exists():
+        print(f"⊙ Data already exists, skipping download")
+        return
 
     # Download the file
     download_file(url, output_path)
