@@ -24,18 +24,18 @@ DATASETS = {
     "parcels": {
         "url": "https://hub.arcgis.com/api/v3/datasets/ab8f3a147ddc47deb6d82c5afda65708_0/downloads/data?format=shp&spatialRefId=3857&where=1%3D1",
         "filename": "parcels.zip",
-        "extract_dir": "parcels"
+        "extract_dir": "parcels",
     },
     "land_use_codes": {
-        "url": "https://hub.arcgis.com/api/v3/datasets/122a2b6d20ea4e1b821ff39d30bdfc56_0/downloads/data?format=csv&spatialRefId=4326&where=1%3D1",
+        "url": "https://hub.arcgis.com/api/v3/datasets/122a2b6d20ea4e1ba8bb831e932ffa56_0/downloads/data?format=csv&spatialRefId=4326&where=1%3D1",
         "filename": "land_use_codes.csv",
-        "extract_dir": None
+        "extract_dir": None,
     },
     "buildings": {
         "url": "https://hub.arcgis.com/api/v3/datasets/aec4d1c6ee894e1b821ff39d30bdfc30_0/downloads/data?format=shp&spatialRefId=3857&where=1%3D1",
         "filename": "buildings.zip",
-        "extract_dir": "buildings"
-    }
+        "extract_dir": "buildings",
+    },
 }
 
 
@@ -52,14 +52,17 @@ def download_file(url: str, output_path: Path) -> None:
     response = requests.get(url, stream=True)
     response.raise_for_status()
 
-    total_size = int(response.headers.get('content-length', 0))
+    total_size = int(response.headers.get("content-length", 0))
 
-    with open(output_path, 'wb') as f, tqdm(
-        total=total_size,
-        unit='B',
-        unit_scale=True,
-        unit_divisor=1024,
-    ) as pbar:
+    with (
+        open(output_path, "wb") as f,
+        tqdm(
+            total=total_size,
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+        ) as pbar,
+    ):
         for chunk in response.iter_content(chunk_size=8192):
             if chunk:
                 f.write(chunk)
@@ -78,7 +81,7 @@ def extract_zip(zip_path: Path, extract_to: Path) -> None:
     """
     print(f"Extracting {zip_path.name}...")
 
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+    with zipfile.ZipFile(zip_path, "r") as zip_ref:
         zip_ref.extractall(extract_to)
 
     # Remove the zip file after extraction
@@ -96,9 +99,9 @@ def download_dataset(name: str, config: dict, data_dir: Path) -> None:
         config: Configuration dictionary with URL and file information
         data_dir: Base data directory
     """
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Processing: {name}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     filename = config["filename"]
     url = config["url"]
@@ -116,7 +119,7 @@ def download_dataset(name: str, config: dict, data_dir: Path) -> None:
     download_file(url, output_path)
 
     # Extract if it's a zip file
-    if filename.endswith('.zip') and final_dir:
+    if filename.endswith(".zip") and final_dir:
         final_dir.mkdir(exist_ok=True)
         extract_zip(output_path, final_dir)
 
@@ -141,9 +144,9 @@ def main():
             print(f"✗ Error downloading {name}: {e}")
             continue
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("✓ All downloads complete!")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"\nData saved to: {data_dir}")
 
 
