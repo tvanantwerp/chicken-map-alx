@@ -27,8 +27,9 @@ def read_data():
     Read all required data files.
 
     Returns:
-        tuple: (land_use_df, parcels_gdf, buildings_gdf)
+        tuple: (land_use_df, boundary_gdf, parcels_gdf, buildings_gdf)
             - land_use_df: DataFrame with zoning codes
+            - boundary_gdf: GeoDataFrame with boundary of Alexandria
             - parcels_gdf: GeoDataFrame with parcel boundaries
             - buildings_gdf: GeoDataFrame with building footprints
     """
@@ -39,6 +40,11 @@ def read_data():
     land_use_path = data_dir / "land_use_codes.csv"
     print(f"Reading land use codes from {land_use_path}")
     land_use_df = pd.read_csv(land_use_path)
+
+    # Read boundary shapefile
+    boundary_path = data_dir / "boundary" / "Boundary.shp"
+    print(f"Reading parcels from {boundary_path}")
+    boundary_gdf = gpd.read_file(boundary_path)
 
     # Read parcels shapefile
     parcels_path = data_dir / "parcels" / "Alexandria_Parcels.shp"
@@ -55,12 +61,12 @@ def read_data():
     print(f"  - Parcels: {len(parcels_gdf)} features")
     print(f"  - Buildings: {len(buildings_gdf)} features")
 
-    return land_use_df, parcels_gdf, buildings_gdf
+    return land_use_df, boundary_gdf, parcels_gdf, buildings_gdf
 
 
 def main():
     """Main entry point for the script."""
-    land_use_df, parcels_gdf, buildings_gdf = read_data()
+    land_use_df, boundary_gdf, parcels_gdf, buildings_gdf = read_data()
 
     # Display basic info about the data
     print("\n" + "=" * 60)
@@ -68,6 +74,13 @@ def main():
     print("=" * 60)
     print(land_use_df.head())
     print(f"\nColumns: {list(land_use_df.columns)}")
+
+    print("\n" + "=" * 60)
+    print("BOUNDARY")
+    print("=" * 60)
+    print(boundary_gdf.head())
+    print(f"\nColumns: {list(boundary_gdf.columns)}")
+    print(f"CRS: {boundary_gdf.crs}")
 
     print("\n" + "=" * 60)
     print("PARCELS")
