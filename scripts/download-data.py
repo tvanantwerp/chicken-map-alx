@@ -119,7 +119,7 @@ def download_dataset(name: str, config: dict, data_dir: Path) -> None:
 
     # Skip if data already exists
     if check_path.exists():
-        print(f"⊙ Data already exists, skipping download")
+        print("⊙ Data already exists, skipping download")
         return
 
     # Download the file
