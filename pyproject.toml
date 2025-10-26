@@ -5,6 +5,8 @@ description = "Where can you legally keep backyard chickens in Alexandria, VA?"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "geopandas>=1.1.1",
+    "pandas>=2.3.3",
     "requests>=2.32.5",
     "ruff>=0.14.2",
     "tqdm>=4.67.1",
