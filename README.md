@@ -1,5 +1,13 @@
 # Where can you legally keep backyard chickens in Alexandria, VA?
 
+The [Alexandria city ordinance](https://library.municode.com/va/alexandria/codes/code_of_ordinances?nodeId=PTIITHCOGEOR_TIT5TRENSE_CH7ANFO_ARTAGEPR_S5-7-2KEFO) says:
+
+> **Sec. 5-7-2 - Keeping fowl.**
+>
+> It shall be unlawful for any person to keep or allow to be kept within the city, within 200 feet of any residence or dwelling not occupied by such person, any fowl. The word "fowl," as used in this section, shall include, but is not limited to, chickens, hens, roosters, ducks, geese, pigeons or any domesticated barnyard bird. (Code 1963, Sec. 4-2)
+
+This repository attempts to map exactly where you can and can't have backyard chickens according to the local law.
+
 ## GIS data sources
 
 Data used to create this map was downloaded from the [City of Alexandria, VA GIS Open Data Hub](https://cityofalexandria-alexgis.opendata.arcgis.com/) on October 26th, 2025. The following data sets were used:
