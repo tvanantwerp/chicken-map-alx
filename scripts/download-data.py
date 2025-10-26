@@ -36,6 +36,11 @@ DATASETS = {
         "filename": "buildings.zip",
         "extract_dir": "buildings",
     },
+    "boundary": {
+        "url": "https://services2.arcgis.com/ChYV69FhfjwkvRmy/arcgis/rest/services/Boundary/FeatureServer/replicafilescache/Boundary_-8951757013489615814.zip",
+        "filename": "boundary.zip",
+        "extract_dir": "boundary",
+    },
 }
 
 
