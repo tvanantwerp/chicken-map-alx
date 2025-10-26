@@ -4,4 +4,8 @@ version = "0.1.0"
 description = "Where can you legally keep backyard chickens in Alexandria, VA?"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "requests>=2.32.5",
+    "ruff>=0.14.2",
+    "tqdm>=4.67.1",
+]
