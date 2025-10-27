@@ -64,6 +64,88 @@ def read_data():
     return land_use_df, boundary_gdf, parcels_gdf, buildings_gdf
 
 
+def prepare_data(land_use_df, boundary_gdf, parcels_gdf, buildings_gdf):
+    """
+    Ensure all GeoDataFrames use the same CRS and validate required fields.
+    Also merges building use data with buildings GeoDataFrame.
+
+    Args:
+        land_use_df: DataFrame with zoning codes
+        boundary_gdf: GeoDataFrame with city boundary
+        parcels_gdf: GeoDataFrame with parcel boundaries
+        buildings_gdf: GeoDataFrame with building footprints
+
+    Returns:
+        tuple: (land_use_df, boundary_gdf, parcels_gdf, buildings_gdf) with standardized CRS
+               buildings_gdf will include USE data merged from buildings-use.csv
+    """
+    print("\nPreparing data...")
+
+    # Check current CRS of all GeoDataFrames
+    print(f"  Boundary CRS: {boundary_gdf.crs}")
+    print(f"  Parcels CRS: {parcels_gdf.crs}")
+    print(f"  Buildings CRS: {buildings_gdf.crs}")
+
+    # Use the parcels CRS as the standard (should be Alexandria's local projection)
+    target_crs = parcels_gdf.crs
+    print(f"\n  Standardizing all data to CRS: {target_crs}")
+
+    # Convert all GeoDataFrames to the same CRS
+    if boundary_gdf.crs != target_crs:
+        boundary_gdf = boundary_gdf.to_crs(target_crs)
+        print("    - Boundary converted")
+
+    if buildings_gdf.crs != target_crs:
+        buildings_gdf = buildings_gdf.to_crs(target_crs)
+        print("    - Buildings converted")
+
+    # Load and merge building use data
+    print("\n  Merging building use data...")
+    data_dir = Path(__file__).parent.parent / "data"
+    buildings_use_path = data_dir / "buildings-use.csv"
+    buildings_use_df = pd.read_csv(buildings_use_path)
+
+    print(f"    - Loaded {len(buildings_use_df)} building use records")
+    print(f"    - Buildings before merge: {len(buildings_gdf)}")
+
+    # Merge building use data with buildings (keeping all buildings even if no use data)
+    buildings_gdf = buildings_gdf.merge(
+        buildings_use_df[['FACILITYID', 'UUSE', 'SIZE', 'UNITS', 'OWNERSHIP']],
+        on='FACILITYID',
+        how='left'
+    )
+
+    # Rename UUSE to USE for consistency with spec
+    buildings_gdf = buildings_gdf.rename(columns={'UUSE': 'USE'})
+
+    print(f"    - Buildings after merge: {len(buildings_gdf)}")
+    print(f"    - Buildings with USE data: {buildings_gdf['USE'].notna().sum()}")
+
+    # Validate required fields
+    print("\n  Validating required fields...")
+
+    # Check parcels has geometry
+    if 'geometry' not in parcels_gdf.columns:
+        raise ValueError("Parcels GeoDataFrame missing 'geometry' column")
+
+    # Check buildings has geometry, FACILITYID, and USE
+    if 'geometry' not in buildings_gdf.columns:
+        raise ValueError("Buildings GeoDataFrame missing 'geometry' column")
+    if 'FACILITYID' not in buildings_gdf.columns:
+        raise ValueError("Buildings GeoDataFrame missing 'FACILITYID' column")
+    if 'USE' not in buildings_gdf.columns:
+        raise ValueError("Buildings GeoDataFrame missing 'USE' column")
+
+    # Check boundary has geometry
+    if 'geometry' not in boundary_gdf.columns:
+        raise ValueError("Boundary GeoDataFrame missing 'geometry' column")
+
+    print("    - All required fields present")
+    print("  Data preparation complete!")
+
+    return land_use_df, boundary_gdf, parcels_gdf, buildings_gdf
+
+
 def main():
     """Main entry point for the script."""
     land_use_df, boundary_gdf, parcels_gdf, buildings_gdf = read_data()

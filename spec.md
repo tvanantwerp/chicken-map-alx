@@ -3,6 +3,10 @@
 ## Overview
 Generate a map showing where backyard chickens are legally allowed in Alexandria, VA, based on the city ordinance that chickens cannot be kept within 200 feet of any residence or dwelling not occupied by the land owner.
 
+## Tech Stack
+
+Python 3.14 and uv for package management and running scripts.
+
 ## Data Inputs
 
 1. `data/land_use_codes.csv` - Zoning codes
@@ -38,7 +42,7 @@ Generate a map showing where backyard chickens are legally allowed in Alexandria
 - Spatial join: dwellings → parcels (to know which dwelling is on which parcel)
 - For each residential parcel:
   - Get all dwelling buildings NOT on this parcel
-  - Create 200-foot buffer around each external dwelling
+  - Create 200-foot buffer around each external dwelling (NOTE, may be more efficient to create boundaries once for all dwellings and then filter out the specific dwelling in each loop iteration)
   - Union all external dwelling buffers
   - Subtract buffer union from parcel geometry
   - Result = allowed area (may be empty geometry)
@@ -129,7 +133,6 @@ create_visualization_layers(boundary, residential, non_residential, results)
 ## Legal Requirements
 
 Based on Alexandria city ordinance:
-- Chickens CAN be kept within 200 feet of the owner's own dwelling
 - Chickens CANNOT be kept within 200 feet of other people's dwellings
 - A dwelling is defined as a building with one or more rooms used for living or sleeping purposes
 - Buildings are classified as dwellings if their USE field in buildings-use.csv is "Household"
