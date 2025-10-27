@@ -146,6 +146,45 @@ def prepare_data(land_use_df, boundary_gdf, parcels_gdf, buildings_gdf):
     return land_use_df, boundary_gdf, parcels_gdf, buildings_gdf
 
 
+def identify_residential_parcels(parcels_gdf, land_use_df):
+    """
+    Identify residential and non-residential parcels based on zoning codes.
+
+    Parcels are classified as residential if their DESCRIPTION contains "residential" (case-insensitive).
+
+    Args:
+        parcels_gdf: GeoDataFrame with parcel boundaries and ZONING column
+        land_use_df: DataFrame with zoning codes and descriptions
+
+    Returns:
+        tuple: (residential_parcels_gdf, non_residential_parcels_gdf)
+    """
+    print("\nIdentifying residential parcels...")
+
+    # Join parcels with land use codes to get descriptions
+    parcels_with_use = parcels_gdf.merge(
+        land_use_df[['ZONING', 'DESCRIPTION']],
+        on='ZONING',
+        how='left'
+    )
+
+    print(f"  Total parcels: {len(parcels_with_use)}")
+
+    # Filter to residential parcels (DESCRIPTION contains "residential", case-insensitive)
+    residential_mask = parcels_with_use['DESCRIPTION'].str.contains('residential', case=False, na=False)
+    residential_parcels_gdf = parcels_with_use[residential_mask].copy()
+    non_residential_parcels_gdf = parcels_with_use[~residential_mask].copy()
+
+    print(f"  Residential parcels: {len(residential_parcels_gdf)}")
+    print(f"  Non-residential parcels: {len(non_residential_parcels_gdf)}")
+
+    # Show unique residential zoning codes
+    residential_zones = sorted(residential_parcels_gdf['ZONING'].unique())
+    print(f"  Residential zoning codes found: {', '.join(residential_zones)}")
+
+    return residential_parcels_gdf, non_residential_parcels_gdf
+
+
 def main():
     """Main entry point for the script."""
     land_use_df, boundary_gdf, parcels_gdf, buildings_gdf = read_data()
