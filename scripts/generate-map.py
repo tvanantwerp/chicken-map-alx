@@ -217,6 +217,89 @@ def identify_dwelling_buildings(buildings_gdf):
     return dwelling_buildings_gdf
 
 
+def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf):
+    """
+    Calculate areas where chickens are allowed on residential parcels.
+
+    Chickens cannot be kept within 200 feet of dwellings not on the same parcel.
+
+    Args:
+        residential_parcels_gdf: GeoDataFrame with residential parcels
+        dwelling_buildings_gdf: GeoDataFrame with dwelling buildings only
+
+    Returns:
+        GeoDataFrame with columns:
+            - parcel_id: Original parcel identifier
+            - geometry: Full parcel geometry
+            - allowed_geometry: Area where chickens are allowed
+            - prohibited_geometry: Area where chickens are prohibited
+    """
+    print("\nCalculating allowed areas for chicken keeping...")
+
+    # Spatial join: which dwellings are on which parcels
+    print("  Performing spatial join of dwellings to parcels...")
+    dwellings_on_parcels = gpd.sjoin(
+        dwelling_buildings_gdf,
+        residential_parcels_gdf[['OBJECTID', 'geometry']],
+        how='inner',
+        predicate='within'
+    )
+    print(f"    - {len(dwellings_on_parcels)} dwellings matched to residential parcels")
+
+    # Create 200-foot buffers around all dwellings (more efficient to do once)
+    print("  Creating 200-foot buffers around all dwellings...")
+    dwelling_buffers = dwelling_buildings_gdf.geometry.buffer(200, cap_style='round')
+    print(f"    - Created {len(dwelling_buffers)} buffers")
+
+    # Process each residential parcel
+    print("  Processing each residential parcel...")
+    results = []
+
+    for idx, parcel in residential_parcels_gdf.iterrows():
+        parcel_id = parcel['OBJECTID']
+
+        # Get dwellings that ARE on this parcel
+        dwellings_on_this_parcel = dwellings_on_parcels[
+            dwellings_on_parcels['OBJECTID'] == parcel_id
+        ]['FACILITYID'].tolist()
+
+        # Get indices of dwellings that are NOT on this parcel
+        external_dwelling_mask = ~dwelling_buildings_gdf['FACILITYID'].isin(dwellings_on_this_parcel)
+        external_buffers = dwelling_buffers[external_dwelling_mask]
+
+        # Union all external dwelling buffers
+        if len(external_buffers) > 0:
+            external_buffers_union = external_buffers.unary_union
+            # Subtract external buffers from parcel to get allowed area
+            allowed_geom = parcel.geometry.difference(external_buffers_union)
+        else:
+            # No external dwellings, entire parcel is allowed
+            allowed_geom = parcel.geometry
+
+        # Calculate prohibited area
+        prohibited_geom = parcel.geometry.difference(allowed_geom)
+
+        results.append({
+            'parcel_id': parcel_id,
+            'geometry': parcel.geometry,
+            'allowed_geometry': allowed_geom,
+            'prohibited_geometry': prohibited_geom
+        })
+
+    # Create results GeoDataFrame
+    results_gdf = gpd.GeoDataFrame(results, crs=residential_parcels_gdf.crs)
+
+    print("\n  Results:")
+    print(f"    - Total residential parcels processed: {len(results_gdf)}")
+
+    # Count parcels with some allowed area
+    has_allowed = results_gdf['allowed_geometry'].apply(lambda g: not g.is_empty).sum()
+    print(f"    - Parcels with some allowed area: {has_allowed}")
+    print(f"    - Parcels with no allowed area: {len(results_gdf) - has_allowed}")
+
+    return results_gdf
+
+
 def main():
     """Main entry point for the script."""
     land_use_df, boundary_gdf, parcels_gdf, buildings_gdf = read_data()
