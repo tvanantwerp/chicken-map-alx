@@ -185,6 +185,38 @@ def identify_residential_parcels(parcels_gdf, land_use_df):
     return residential_parcels_gdf, non_residential_parcels_gdf
 
 
+def identify_dwelling_buildings(buildings_gdf):
+    """
+    Filter buildings to only those used as dwellings (households).
+
+    A dwelling is defined as a building with USE == "Household" based on the
+    buildings-use.csv data that was already merged in prepare_data().
+
+    Args:
+        buildings_gdf: GeoDataFrame with building footprints and USE column
+
+    Returns:
+        GeoDataFrame: dwelling_buildings_gdf (only residential/household buildings)
+    """
+    print("\nIdentifying dwelling buildings...")
+
+    print(f"  Total buildings: {len(buildings_gdf)}")
+    print(f"  Buildings with USE data: {buildings_gdf['USE'].notna().sum()}")
+
+    # Filter to only household buildings
+    dwelling_buildings_gdf = buildings_gdf[buildings_gdf['USE'] == 'Household'].copy()
+
+    print(f"  Dwelling buildings (USE='Household'): {len(dwelling_buildings_gdf)}")
+
+    # Show sample of unique USE types for context
+    use_counts = buildings_gdf['USE'].value_counts().head(10)
+    print("\n  Top 10 building use types:")
+    for use_type, count in use_counts.items():
+        print(f"    - {use_type}: {count}")
+
+    return dwelling_buildings_gdf
+
+
 def main():
     """Main entry point for the script."""
     land_use_df, boundary_gdf, parcels_gdf, buildings_gdf = read_data()
