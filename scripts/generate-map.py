@@ -252,6 +252,7 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf):
     # Spatial join: which dwellings are on which parcels
     print("  Performing spatial join of dwellings to parcels...")
 
+    # Keep all columns to maintain index_right convention
     dwellings_on_parcels = gpd.sjoin(
         dwelling_buildings_gdf,
         residential_parcels_gdf[['OBJECTID', 'geometry']],
@@ -269,6 +270,17 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf):
         .to_dict()
     )
     print(f"    - Created lookup for {len(parcel_to_dwellings)} parcels with dwellings")
+
+    # Also create mapping of parcel to whether it has multi-unit buildings
+    print("  Identifying multi-unit buildings...")
+    parcel_to_has_multiunit = (
+        dwellings_on_parcels
+        .groupby('OBJECTID_right')['UNITS']
+        .apply(lambda units: (units > 1).any())
+        .to_dict()
+    )
+    multi_unit_parcel_count = sum(parcel_to_has_multiunit.values())
+    print(f"    - Found {multi_unit_parcel_count} parcels with multi-unit buildings")
 
     # Create 200-foot buffers around all dwellings
     print("  Creating 200-foot buffers around all dwellings...")
@@ -299,8 +311,8 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf):
     print("  Processing parcels in groups...")
     results = []
 
-    # Create a mapping of parcel_id to external buffers that intersect it
-    parcel_to_external_buffers = {}
+    # Create a mapping of parcel_id to buffers that should be subtracted
+    parcel_to_prohibited_buffers = {}
 
     # After sjoin, OBJECTID from the right dataframe should be in the result
     # Check if we need to use OBJECTID or OBJECTID_right
@@ -309,31 +321,45 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf):
     for parcel_id, group in buffers_intersecting_parcels.groupby(parcel_id_col):
         # Get dwellings that are ON this parcel
         dwellings_on_this_parcel = parcel_to_dwellings.get(parcel_id, set())
+        num_dwellings_on_parcel = len(dwellings_on_this_parcel)
+        has_multiunit_building = parcel_to_has_multiunit.get(parcel_id, False)
 
-        # Filter to only external dwellings (not on this parcel)
-        external_buffer_indices = group[
-            ~group['FACILITYID'].isin(dwellings_on_this_parcel)
-        ].index
+        # Determine which buffers to include based on number of dwellings and units
+        # A parcel has "multiple occupancies" if:
+        # 1. It has multiple dwelling buildings, OR
+        # 2. It has any dwelling building with multiple units (e.g., condos, apartments)
+        is_multiple_occupancy = (num_dwellings_on_parcel > 1) or has_multiunit_building
 
-        # Store the geometries of external buffers
-        if len(external_buffer_indices) > 0:
-            parcel_to_external_buffers[parcel_id] = dwelling_buffers_gdf.loc[external_buffer_indices, 'geometry']
+        if not is_multiple_occupancy:
+            # Single dwelling, single unit: exclude buffer from the one dwelling on this parcel
+            # (Owner-occupied single-family home - can keep chickens within 200ft of own dwelling)
+            buffer_indices = group[
+                ~group['FACILITYID'].isin(dwellings_on_this_parcel)
+            ].index
+        else:
+            # Multiple occupancies: include ALL buffers, even those from dwellings on same parcel
+            # (Each unit/dwelling is occupied by different people, so they create prohibited zones)
+            buffer_indices = group.index
+
+        # Store the geometries of buffers to subtract
+        if len(buffer_indices) > 0:
+            parcel_to_prohibited_buffers[parcel_id] = dwelling_buffers_gdf.loc[buffer_indices, 'geometry']
 
     # Process each residential parcel
     for idx, parcel in residential_parcels_gdf.iterrows():
         parcel_id = parcel['OBJECTID']
 
-        # Get external buffers that intersect this parcel
-        external_buffers = parcel_to_external_buffers.get(parcel_id)
+        # Get buffers that should be subtracted from this parcel
+        prohibited_buffers = parcel_to_prohibited_buffers.get(parcel_id)
 
         # Calculate allowed area
-        if external_buffers is not None and len(external_buffers) > 0:
-            # Union only the relevant external buffers
-            external_buffers_union = external_buffers.union_all()
-            # Subtract external buffers from parcel to get allowed area
-            allowed_geom = parcel.geometry.difference(external_buffers_union)
+        if prohibited_buffers is not None and len(prohibited_buffers) > 0:
+            # Union the prohibited buffers
+            prohibited_buffers_union = prohibited_buffers.union_all()
+            # Subtract prohibited buffers from parcel to get allowed area
+            allowed_geom = parcel.geometry.difference(prohibited_buffers_union)
         else:
-            # No external dwellings nearby, entire parcel is allowed
+            # No nearby dwellings, entire parcel is allowed
             allowed_geom = parcel.geometry
 
         # Calculate prohibited area
