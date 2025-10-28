@@ -226,6 +226,8 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf):
 
     Chickens cannot be kept within 200 feet of dwellings not on the same parcel.
 
+    This function uses spatial indexing to efficiently process large datasets.
+
     Args:
         residential_parcels_gdf: GeoDataFrame with residential parcels
         dwelling_buildings_gdf: GeoDataFrame with dwelling buildings only
@@ -250,35 +252,80 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf):
     )
     print(f"    - {len(dwellings_on_parcels)} dwellings matched to residential parcels")
 
-    # Create 200-foot buffers around all dwellings (more efficient to do once)
+    # Pre-compute dwelling-to-parcel mapping for fast lookup
+    print("  Building dwelling-to-parcel lookup...")
+    parcel_to_dwellings = (
+        dwellings_on_parcels
+        .groupby('OBJECTID_right')['FACILITYID']
+        .apply(set)
+        .to_dict()
+    )
+    print(f"    - Created lookup for {len(parcel_to_dwellings)} parcels with dwellings")
+
+    # Create 200-foot buffers around all dwellings
     print("  Creating 200-foot buffers around all dwellings...")
     dwelling_buffers = dwelling_buildings_gdf.geometry.buffer(200, cap_style='round')
-    print(f"    - Created {len(dwelling_buffers)} buffers")
 
-    # Process each residential parcel
-    print("  Processing each residential parcel...")
+    # Create GeoDataFrame of buffers for spatial indexing
+    dwelling_buffers_gdf = gpd.GeoDataFrame(
+        dwelling_buildings_gdf[['FACILITYID']].copy(),
+        geometry=dwelling_buffers,
+        crs=dwelling_buildings_gdf.crs
+    )
+    print(f"    - Created {len(dwelling_buffers_gdf)} buffers")
+
+    # Spatial join: which buffers intersect which parcels (uses spatial index)
+    print("  Finding buffers that intersect parcels (using spatial index)...")
+    # Reset index of parcels to ensure OBJECTID is a column, not index
+    parcels_for_join = residential_parcels_gdf[['OBJECTID', 'geometry']].reset_index(drop=True)
+
+    buffers_intersecting_parcels = gpd.sjoin(
+        dwelling_buffers_gdf,
+        parcels_for_join,
+        how='inner',
+        predicate='intersects'
+    )
+    print(f"    - Found {len(buffers_intersecting_parcels)} buffer-parcel intersections")
+
+    # Group by parcel for efficient processing
+    print("  Processing parcels in groups...")
     results = []
 
+    # Create a mapping of parcel_id to external buffers that intersect it
+    parcel_to_external_buffers = {}
+
+    # After sjoin, OBJECTID from the right dataframe should be in the result
+    # Check if we need to use OBJECTID or OBJECTID_right
+    parcel_id_col = 'OBJECTID' if 'OBJECTID_right' not in buffers_intersecting_parcels.columns else 'OBJECTID_right'
+
+    for parcel_id, group in buffers_intersecting_parcels.groupby(parcel_id_col):
+        # Get dwellings that are ON this parcel
+        dwellings_on_this_parcel = parcel_to_dwellings.get(parcel_id, set())
+
+        # Filter to only external dwellings (not on this parcel)
+        external_buffer_indices = group[
+            ~group['FACILITYID'].isin(dwellings_on_this_parcel)
+        ].index
+
+        # Store the geometries of external buffers
+        if len(external_buffer_indices) > 0:
+            parcel_to_external_buffers[parcel_id] = dwelling_buffers_gdf.loc[external_buffer_indices, 'geometry']
+
+    # Process each residential parcel
     for idx, parcel in residential_parcels_gdf.iterrows():
         parcel_id = parcel['OBJECTID']
 
-        # Get dwellings that ARE on this parcel
-        # After sjoin, the right dataframe's OBJECTID becomes OBJECTID_right
-        dwellings_on_this_parcel = dwellings_on_parcels[
-            dwellings_on_parcels['OBJECTID_right'] == parcel_id
-        ]['FACILITYID'].tolist()
+        # Get external buffers that intersect this parcel
+        external_buffers = parcel_to_external_buffers.get(parcel_id)
 
-        # Get indices of dwellings that are NOT on this parcel
-        external_dwelling_mask = ~dwelling_buildings_gdf['FACILITYID'].isin(dwellings_on_this_parcel)
-        external_buffers = dwelling_buffers[external_dwelling_mask]
-
-        # Union all external dwelling buffers
-        if len(external_buffers) > 0:
+        # Calculate allowed area
+        if external_buffers is not None and len(external_buffers) > 0:
+            # Union only the relevant external buffers
             external_buffers_union = external_buffers.unary_union
             # Subtract external buffers from parcel to get allowed area
             allowed_geom = parcel.geometry.difference(external_buffers_union)
         else:
-            # No external dwellings, entire parcel is allowed
+            # No external dwellings nearby, entire parcel is allowed
             allowed_geom = parcel.geometry
 
         # Calculate prohibited area
