@@ -4,6 +4,7 @@
 # dependencies = [
 #     "pandas",
 #     "geopandas",
+#     "matplotlib",
 # ]
 # ///
 """
@@ -20,6 +21,8 @@ To determine which areas of residential parcels meet the legal requirements for 
 from pathlib import Path
 import pandas as pd
 import geopandas as gpd
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
 
 def read_data():
@@ -298,6 +301,131 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf):
     print(f"    - Parcels with no allowed area: {len(results_gdf) - has_allowed}")
 
     return results_gdf
+
+
+def create_visualization_layers(boundary_gdf, residential_parcels_gdf, non_residential_parcels_gdf, results_gdf):
+    """
+    Create separate GeoDataFrames for each visualization layer.
+
+    Args:
+        boundary_gdf: GeoDataFrame with city boundary
+        residential_parcels_gdf: GeoDataFrame with residential parcels
+        non_residential_parcels_gdf: GeoDataFrame with non-residential parcels
+        results_gdf: GeoDataFrame with allowed/prohibited areas
+
+    Returns:
+        tuple: (boundary_layer, non_res_layer, prohibited_layer, allowed_layer)
+    """
+    print("\nCreating visualization layers...")
+
+    # Layer 1: Boundary - city outline
+    boundary_layer = boundary_gdf.copy()
+    print(f"  - Boundary layer: {len(boundary_layer)} features")
+
+    # Layer 2: Non-residential parcels
+    non_res_layer = non_residential_parcels_gdf[['geometry']].copy()
+    print(f"  - Non-residential layer: {len(non_res_layer)} features")
+
+    # Layer 3: Prohibited residential areas
+    # Extract prohibited geometries from results
+    prohibited_geoms = []
+    for idx, row in results_gdf.iterrows():
+        if not row['prohibited_geometry'].is_empty:
+            prohibited_geoms.append({'geometry': row['prohibited_geometry']})
+
+    prohibited_layer = gpd.GeoDataFrame(prohibited_geoms, crs=results_gdf.crs)
+    print(f"  - Prohibited residential layer: {len(prohibited_layer)} features")
+
+    # Layer 4: Allowed residential areas
+    # Extract allowed geometries from results
+    allowed_geoms = []
+    for idx, row in results_gdf.iterrows():
+        if not row['allowed_geometry'].is_empty:
+            allowed_geoms.append({'geometry': row['allowed_geometry']})
+
+    allowed_layer = gpd.GeoDataFrame(allowed_geoms, crs=results_gdf.crs)
+    print(f"  - Allowed residential layer: {len(allowed_layer)} features")
+
+    print("  Visualization layers created!")
+
+    return boundary_layer, non_res_layer, prohibited_layer, allowed_layer
+
+
+def generate_map(boundary_layer, non_res_layer, prohibited_layer, allowed_layer, output_dir):
+    """
+    Generate a map visualization showing chicken zoning areas.
+
+    Args:
+        boundary_layer: GeoDataFrame with city boundary
+        non_res_layer: GeoDataFrame with non-residential parcels
+        prohibited_layer: GeoDataFrame with prohibited residential areas
+        allowed_layer: GeoDataFrame with allowed residential areas
+        output_dir: Path to directory for saving output files
+
+    Returns:
+        matplotlib.figure.Figure: The generated figure object
+    """
+    print("\nGenerating map visualization...")
+
+    # Create output directory if it doesn't exist
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create figure with appropriate size (16x12 inches for good detail)
+    fig, ax = plt.subplots(figsize=(16, 12))
+
+    # Plot layers in order (bottom to top)
+    # Layer 1: Non-residential parcels (light gray)
+    if len(non_res_layer) > 0:
+        non_res_layer.plot(ax=ax, color='#CCCCCC', edgecolor='none', label='Non-residential')
+        print(f"  - Plotted {len(non_res_layer)} non-residential parcels")
+
+    # Layer 2: Prohibited residential areas (dark gray)
+    if len(prohibited_layer) > 0:
+        prohibited_layer.plot(ax=ax, color='#666666', edgecolor='none', label='Prohibited (within 200ft of dwelling)')
+        print(f"  - Plotted {len(prohibited_layer)} prohibited areas")
+
+    # Layer 3: Allowed residential areas (bright green)
+    if len(allowed_layer) > 0:
+        allowed_layer.plot(ax=ax, color='#4CAF50', edgecolor='none', label='Allowed for chickens')
+        print(f"  - Plotted {len(allowed_layer)} allowed areas")
+
+    # Layer 4: Boundary outline (black, 2pt line)
+    boundary_layer.plot(ax=ax, facecolor='none', edgecolor='black', linewidth=2, label='City boundary')
+    print(f"  - Plotted city boundary")
+
+    # Add title
+    ax.set_title('Alexandria, VA: Backyard Chicken Zoning', fontsize=20, fontweight='bold', pad=20)
+
+    # Add legend
+    ax.legend(loc='upper right', fontsize=12, framealpha=0.9)
+
+    # Remove axis ticks and labels for clean map
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xlabel('')
+    ax.set_ylabel('')
+
+    # Remove axis spines for cleaner look
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    # Tight layout
+    plt.tight_layout()
+
+    # Save as PNG
+    png_path = output_dir / 'chicken_map.png'
+    plt.savefig(png_path, dpi=300, bbox_inches='tight')
+    print(f"\n  Saved PNG to: {png_path}")
+
+    # Save as SVG
+    svg_path = output_dir / 'chicken_map.svg'
+    plt.savefig(svg_path, format='svg', bbox_inches='tight')
+    print(f"  Saved SVG to: {svg_path}")
+
+    print("  Map generation complete!")
+
+    return fig
 
 
 def main():
