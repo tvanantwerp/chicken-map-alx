@@ -36,6 +36,11 @@ DATASETS = {
         "filename": "buildings.zip",
         "extract_dir": "buildings",
     },
+    "buildings_use": {
+        "url": "https://hub.arcgis.com/api/v3/datasets/8ecb044012bf47f0959fee76e9cc559b_0/downloads/data?format=csv&spatialRefId=3857&where=1%3D1",
+        "filename": "buildings-use.csv",
+        "extract_dir": None,
+    },
     "boundary": {
         "url": "https://services2.arcgis.com/ChYV69FhfjwkvRmy/arcgis/rest/services/Boundary/FeatureServer/replicafilescache/Boundary_-8951757013489615814.zip",
         "filename": "boundary.zip",
