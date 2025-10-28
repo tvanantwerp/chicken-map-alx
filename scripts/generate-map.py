@@ -274,6 +274,10 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all
     )
     print(f"    - Created lookup for {len(parcel_to_dwellings)} parcels with dwellings")
 
+    # Calculate how many residential parcels have no households
+    parcels_without_households = len(residential_parcels_gdf) - len(parcel_to_dwellings)
+    print(f"    - Residential parcels without households: {parcels_without_households}")
+
     # Also create mapping of parcel to whether it has multi-unit buildings
     print("  Identifying multi-unit buildings...")
     parcel_to_has_multiunit = (
@@ -369,29 +373,38 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all
     for idx, parcel in residential_parcels_gdf.iterrows():
         parcel_id = parcel['OBJECTID']
 
-        # Get buffers that should be subtracted from this parcel
-        prohibited_buffers = parcel_to_prohibited_buffers.get(parcel_id)
+        # Step 0: Check if parcel has any household buildings
+        # Can't keep backyard chickens without a household on the parcel
+        has_household = parcel_id in parcel_to_dwellings
 
-        # Step 1: Subtract 200-foot dwelling buffers from parcel
-        if prohibited_buffers is not None and len(prohibited_buffers) > 0:
-            # Union the prohibited buffers
-            prohibited_buffers_union = prohibited_buffers.union_all()
-            # Subtract prohibited buffers from parcel to get allowed area
-            allowed_geom = parcel.geometry.difference(prohibited_buffers_union)
+        if not has_household:
+            # No household on this parcel - entire parcel is prohibited
+            allowed_geom = parcel.geometry.difference(parcel.geometry)  # Creates empty geometry
+            prohibited_geom = parcel.geometry
         else:
-            # No nearby dwellings, entire parcel is allowed (so far)
-            allowed_geom = parcel.geometry
+            # Get buffers that should be subtracted from this parcel
+            prohibited_buffers = parcel_to_prohibited_buffers.get(parcel_id)
 
-        # Step 2: Also subtract all building footprints (chickens are kept outdoors)
-        buildings_on_this_parcel = parcel_to_buildings.get(parcel_id)
-        if buildings_on_this_parcel is not None and len(buildings_on_this_parcel) > 0:
-            # Union all building footprints on this parcel
-            buildings_union = buildings_on_this_parcel.union_all()
-            # Subtract building footprints from allowed area
-            allowed_geom = allowed_geom.difference(buildings_union)
+            # Step 1: Subtract 200-foot dwelling buffers from parcel
+            if prohibited_buffers is not None and len(prohibited_buffers) > 0:
+                # Union the prohibited buffers
+                prohibited_buffers_union = prohibited_buffers.union_all()
+                # Subtract prohibited buffers from parcel to get allowed area
+                allowed_geom = parcel.geometry.difference(prohibited_buffers_union)
+            else:
+                # No nearby dwellings, entire parcel is allowed (so far)
+                allowed_geom = parcel.geometry
 
-        # Calculate prohibited area
-        prohibited_geom = parcel.geometry.difference(allowed_geom)
+            # Step 2: Also subtract all building footprints (chickens are kept outdoors)
+            buildings_on_this_parcel = parcel_to_buildings.get(parcel_id)
+            if buildings_on_this_parcel is not None and len(buildings_on_this_parcel) > 0:
+                # Union all building footprints on this parcel
+                buildings_union = buildings_on_this_parcel.union_all()
+                # Subtract building footprints from allowed area
+                allowed_geom = allowed_geom.difference(buildings_union)
+
+            # Calculate prohibited area
+            prohibited_geom = parcel.geometry.difference(allowed_geom)
 
         results.append({
             'parcel_id': parcel_id,
@@ -488,28 +501,36 @@ def generate_map(boundary_layer, non_res_layer, prohibited_layer, allowed_layer,
     # Plot layers in order (bottom to top)
     # Layer 1: Non-residential parcels (light gray)
     if len(non_res_layer) > 0:
-        non_res_layer.plot(ax=ax, color='#CCCCCC', edgecolor='none', label='Non-residential')
+        non_res_layer.plot(ax=ax, color='#CCCCCC', edgecolor='none')
         print(f"  - Plotted {len(non_res_layer)} non-residential parcels")
 
     # Layer 2: Prohibited residential areas (dark gray)
     if len(prohibited_layer) > 0:
-        prohibited_layer.plot(ax=ax, color='#666666', edgecolor='none', label='Prohibited (within 200ft of dwelling)')
+        prohibited_layer.plot(ax=ax, color='#666666', edgecolor='none')
         print(f"  - Plotted {len(prohibited_layer)} prohibited areas")
 
     # Layer 3: Allowed residential areas (bright green)
     if len(allowed_layer) > 0:
-        allowed_layer.plot(ax=ax, color='#4CAF50', edgecolor='none', label='Allowed for chickens')
+        allowed_layer.plot(ax=ax, color='#4CAF50', edgecolor='none')
         print(f"  - Plotted {len(allowed_layer)} allowed areas")
 
     # Layer 4: Boundary outline (black, 2pt line)
-    boundary_layer.plot(ax=ax, facecolor='none', edgecolor='black', linewidth=2, label='City boundary')
+    boundary_layer.plot(ax=ax, facecolor='none', edgecolor='black', linewidth=2)
     print(f"  - Plotted city boundary")
 
     # Add title
     ax.set_title('Alexandria, VA: Backyard Chicken Zoning', fontsize=20, fontweight='bold', pad=20)
 
-    # Add legend
-    ax.legend(loc='upper right', fontsize=12, framealpha=0.9)
+    # Create manual legend entries
+    legend_elements = [
+        Patch(facecolor='#4CAF50', edgecolor='none', label='Allowed for chickens'),
+        Patch(facecolor='#666666', edgecolor='none', label='Prohibited residential areas'),
+        Patch(facecolor='#CCCCCC', edgecolor='none', label='Non-residential areas'),
+        Patch(facecolor='none', edgecolor='black', linewidth=2, label='City boundary')
+    ]
+
+    # Add legend with manual entries
+    ax.legend(handles=legend_elements, loc='lower left', fontsize=12, framealpha=0.9)
 
     # Remove axis ticks and labels for clean map
     ax.set_xticks([])

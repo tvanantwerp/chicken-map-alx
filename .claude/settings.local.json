@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(uv run python:*)",
+      "Bash(python scripts/generate-map.py:*)",
+      "Bash(.venv/bin/python:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -11,3 +11,4 @@ wheels/
 
 # Raw GIS data
 data/
+output/
