@@ -204,10 +204,10 @@ def identify_residential_parcels(parcels_gdf, land_use_df):
 
 def identify_dwelling_buildings(buildings_gdf):
     """
-    Filter buildings to only those used as dwellings (households).
+    Filter buildings to only those used as dwellings (households and dormitories).
 
-    A dwelling is defined as a building with USE == "Household" based on the
-    buildings-use.csv data that was already merged in prepare_data().
+    A dwelling is defined as a building with USE == "Household" or USE == "Dormitory"
+    based on the buildings-use.csv data that was already merged in prepare_data().
 
     Args:
         buildings_gdf: GeoDataFrame with building footprints and USE column
@@ -220,10 +220,18 @@ def identify_dwelling_buildings(buildings_gdf):
     print(f"  Total buildings: {len(buildings_gdf)}")
     print(f"  Buildings with USE data: {buildings_gdf['USE'].notna().sum()}")
 
-    # Filter to only household buildings
-    dwelling_buildings_gdf = buildings_gdf[buildings_gdf["USE"] == "Household"].copy()
+    # Filter to household and dormitory buildings
+    dwelling_buildings_gdf = buildings_gdf[
+        buildings_gdf["USE"].isin(["Household", "Dormitory"])
+    ].copy()
 
-    print(f"  Dwelling buildings (USE='Household'): {len(dwelling_buildings_gdf)}")
+    households = len(buildings_gdf[buildings_gdf["USE"] == "Household"])
+    dormitories = len(buildings_gdf[buildings_gdf["USE"] == "Dormitory"])
+
+    print(f"  Dwelling buildings:")
+    print(f"    - Household: {households}")
+    print(f"    - Dormitory: {dormitories}")
+    print(f"    - Total: {len(dwelling_buildings_gdf)}")
 
     # Show sample of unique USE types for context
     use_counts = buildings_gdf["USE"].value_counts().head(10)
@@ -287,13 +295,22 @@ def calculate_allowed_areas(
 
     # Also create mapping of parcel to whether it has multi-unit buildings
     print("  Identifying multi-unit buildings...")
+
+    def check_multiunit(group):
+        """Check if a parcel has multi-unit buildings or dormitories."""
+        # Dormitories are always multi-unit (data may incorrectly show UNITS=1)
+        has_dormitory = (group["USE"] == "Dormitory").any()
+        # Buildings with UNITS > 1
+        has_multiunit = (group["UNITS"] > 1).any()
+        return has_dormitory or has_multiunit
+
     parcel_to_has_multiunit = (
-        dwellings_on_parcels.groupby("OBJECTID_right")["UNITS"]
-        .apply(lambda units: (units > 1).any())
+        dwellings_on_parcels.groupby("OBJECTID_right")
+        .apply(check_multiunit)
         .to_dict()
     )
     multi_unit_parcel_count = sum(parcel_to_has_multiunit.values())
-    print(f"    - Found {multi_unit_parcel_count} parcels with multi-unit buildings")
+    print(f"    - Found {multi_unit_parcel_count} parcels with multi-unit buildings or dormitories")
 
     # Create 200-foot buffers around all dwellings
     print("  Creating 200-foot buffers around all dwellings...")
@@ -498,7 +515,7 @@ def create_visualization_layers(
 
 
 def generate_map(
-    boundary_layer, non_res_layer, prohibited_layer, allowed_layer, output_dir
+    boundary_layer, non_res_layer, prohibited_layer, allowed_layer, results_gdf, output_dir
 ):
     """
     Generate a map visualization showing chicken zoning areas.
@@ -508,6 +525,7 @@ def generate_map(
         non_res_layer: GeoDataFrame with non-residential parcels
         prohibited_layer: GeoDataFrame with prohibited residential areas
         allowed_layer: GeoDataFrame with allowed residential areas
+        results_gdf: GeoDataFrame with all residential parcel results
         output_dir: Path to directory for saving output files
 
     Returns:
@@ -547,9 +565,15 @@ def generate_map(
     boundary_layer.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=2)
     print("  - Plotted city boundary")
 
-    # Add title
+    # Add title with subtitle showing the statistics
+    # Calculate statistics dynamically from the data
+    allowed_count = len(allowed_layer)
+    total_residential = len(results_gdf)
+    percentage = (allowed_count / total_residential) * 100
+
     ax.set_title(
-        "Alexandria, VA: Backyard Chicken Zoning",
+        f"Alexandria, VA: Backyard Chicken Zoning\n"
+        f"Only {allowed_count} of {total_residential:,} residential parcels ({percentage:.3f}%) technically permit chickens",
         fontsize=20,
         fontweight="bold",
         pad=20,
@@ -685,7 +709,7 @@ def main():
 
     # Generate map visualization
     generate_map(
-        boundary_layer, non_res_layer, prohibited_layer, allowed_layer, output_dir
+        boundary_layer, non_res_layer, prohibited_layer, allowed_layer, results_gdf, output_dir
     )
 
     # Export shapefile
