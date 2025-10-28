@@ -228,17 +228,20 @@ def identify_dwelling_buildings(buildings_gdf):
     return dwelling_buildings_gdf
 
 
-def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf):
+def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all_buildings_gdf):
     """
     Calculate areas where chickens are allowed on residential parcels.
 
-    Chickens cannot be kept within 200 feet of dwellings not on the same parcel.
+    Chickens cannot be kept:
+    1. Within 200 feet of dwellings not occupied by the owner
+    2. Inside any building (chickens are kept outdoors)
 
     This function uses spatial indexing to efficiently process large datasets.
 
     Args:
         residential_parcels_gdf: GeoDataFrame with residential parcels
         dwelling_buildings_gdf: GeoDataFrame with dwelling buildings only
+        all_buildings_gdf: GeoDataFrame with all building footprints
 
     Returns:
         GeoDataFrame with columns:
@@ -345,6 +348,23 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf):
         if len(buffer_indices) > 0:
             parcel_to_prohibited_buffers[parcel_id] = dwelling_buffers_gdf.loc[buffer_indices, 'geometry']
 
+    # Spatial join: find which buildings are on which parcels
+    print("  Finding buildings on parcels...")
+    buildings_on_parcels = gpd.sjoin(
+        all_buildings_gdf,
+        residential_parcels_gdf[['OBJECTID', 'geometry']],
+        how='inner',
+        predicate='intersects'
+    )
+
+    # Create mapping of parcel to building footprints
+    parcel_to_buildings = {}
+    for parcel_id, group in buildings_on_parcels.groupby('OBJECTID_right'):
+        # The geometry column in the group is already the building geometries
+        parcel_to_buildings[parcel_id] = group.geometry
+
+    print(f"    - Found buildings on {len(parcel_to_buildings)} parcels")
+
     # Process each residential parcel
     for idx, parcel in residential_parcels_gdf.iterrows():
         parcel_id = parcel['OBJECTID']
@@ -352,15 +372,23 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf):
         # Get buffers that should be subtracted from this parcel
         prohibited_buffers = parcel_to_prohibited_buffers.get(parcel_id)
 
-        # Calculate allowed area
+        # Step 1: Subtract 200-foot dwelling buffers from parcel
         if prohibited_buffers is not None and len(prohibited_buffers) > 0:
             # Union the prohibited buffers
             prohibited_buffers_union = prohibited_buffers.union_all()
             # Subtract prohibited buffers from parcel to get allowed area
             allowed_geom = parcel.geometry.difference(prohibited_buffers_union)
         else:
-            # No nearby dwellings, entire parcel is allowed
+            # No nearby dwellings, entire parcel is allowed (so far)
             allowed_geom = parcel.geometry
+
+        # Step 2: Also subtract all building footprints (chickens are kept outdoors)
+        buildings_on_this_parcel = parcel_to_buildings.get(parcel_id)
+        if buildings_on_this_parcel is not None and len(buildings_on_this_parcel) > 0:
+            # Union all building footprints on this parcel
+            buildings_union = buildings_on_this_parcel.union_all()
+            # Subtract building footprints from allowed area
+            allowed_geom = allowed_geom.difference(buildings_union)
 
         # Calculate prohibited area
         prohibited_geom = parcel.geometry.difference(allowed_geom)
@@ -571,7 +599,7 @@ def main():
     dwelling_buildings_gdf = identify_dwelling_buildings(buildings_gdf)
 
     # Step 5: Calculate allowed areas (core logic)
-    results_gdf = calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf)
+    results_gdf = calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, buildings_gdf)
 
     # Step 6: Create visualization layers
     boundary_layer, non_res_layer, prohibited_layer, allowed_layer = create_visualization_layers(
