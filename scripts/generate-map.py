@@ -113,13 +113,13 @@ def prepare_data(land_use_df, boundary_gdf, parcels_gdf, buildings_gdf):
 
     # Merge building use data with buildings (keeping all buildings even if no use data)
     buildings_gdf = buildings_gdf.merge(
-        buildings_use_df[['FACILITYID', 'UUSE', 'SIZE', 'UNITS', 'OWNERSHIP']],
-        on='FACILITYID',
-        how='left'
+        buildings_use_df[["FACILITYID", "UUSE", "SIZE", "UNITS", "OWNERSHIP"]],
+        on="FACILITYID",
+        how="left",
     )
 
     # Rename UUSE to USE for consistency with spec
-    buildings_gdf = buildings_gdf.rename(columns={'UUSE': 'USE'})
+    buildings_gdf = buildings_gdf.rename(columns={"UUSE": "USE"})
 
     print(f"    - Buildings after merge: {len(buildings_gdf)}")
     print(f"    - Buildings with USE data: {buildings_gdf['USE'].notna().sum()}")
@@ -128,19 +128,19 @@ def prepare_data(land_use_df, boundary_gdf, parcels_gdf, buildings_gdf):
     print("\n  Validating required fields...")
 
     # Check parcels has geometry
-    if 'geometry' not in parcels_gdf.columns:
+    if "geometry" not in parcels_gdf.columns:
         raise ValueError("Parcels GeoDataFrame missing 'geometry' column")
 
     # Check buildings has geometry, FACILITYID, and USE
-    if 'geometry' not in buildings_gdf.columns:
+    if "geometry" not in buildings_gdf.columns:
         raise ValueError("Buildings GeoDataFrame missing 'geometry' column")
-    if 'FACILITYID' not in buildings_gdf.columns:
+    if "FACILITYID" not in buildings_gdf.columns:
         raise ValueError("Buildings GeoDataFrame missing 'FACILITYID' column")
-    if 'USE' not in buildings_gdf.columns:
+    if "USE" not in buildings_gdf.columns:
         raise ValueError("Buildings GeoDataFrame missing 'USE' column")
 
     # Check boundary has geometry
-    if 'geometry' not in boundary_gdf.columns:
+    if "geometry" not in boundary_gdf.columns:
         raise ValueError("Boundary GeoDataFrame missing 'geometry' column")
 
     print("    - All required fields present")
@@ -167,22 +167,28 @@ def identify_residential_parcels(parcels_gdf, land_use_df):
     # Normalize zoning codes by removing spaces to handle mismatches
     # (e.g., "R 8" in shapefile vs "R8" in CSV)
     parcels_normalized = parcels_gdf.copy()
-    parcels_normalized['ZONING_NORMALIZED'] = parcels_normalized['ZONING'].str.replace(' ', '', regex=False)
+    parcels_normalized["ZONING_NORMALIZED"] = parcels_normalized["ZONING"].str.replace(
+        " ", "", regex=False
+    )
 
     land_use_normalized = land_use_df.copy()
-    land_use_normalized['ZONING_NORMALIZED'] = land_use_normalized['ZONING'].str.replace(' ', '', regex=False)
+    land_use_normalized["ZONING_NORMALIZED"] = land_use_normalized[
+        "ZONING"
+    ].str.replace(" ", "", regex=False)
 
     # Join parcels with land use codes to get descriptions
     parcels_with_use = parcels_normalized.merge(
-        land_use_normalized[['ZONING_NORMALIZED', 'DESCRIPTION']],
-        on='ZONING_NORMALIZED',
-        how='left'
+        land_use_normalized[["ZONING_NORMALIZED", "DESCRIPTION"]],
+        on="ZONING_NORMALIZED",
+        how="left",
     )
 
     print(f"  Total parcels: {len(parcels_with_use)}")
 
     # Filter to residential parcels (DESCRIPTION contains "residential", case-insensitive)
-    residential_mask = parcels_with_use['DESCRIPTION'].str.contains('residential', case=False, na=False)
+    residential_mask = parcels_with_use["DESCRIPTION"].str.contains(
+        "residential", case=False, na=False
+    )
     residential_parcels_gdf = parcels_with_use[residential_mask].copy()
     non_residential_parcels_gdf = parcels_with_use[~residential_mask].copy()
 
@@ -190,7 +196,7 @@ def identify_residential_parcels(parcels_gdf, land_use_df):
     print(f"  Non-residential parcels: {len(non_residential_parcels_gdf)}")
 
     # Show unique residential zoning codes
-    residential_zones = sorted(residential_parcels_gdf['ZONING'].unique())
+    residential_zones = sorted(residential_parcels_gdf["ZONING"].unique())
     print(f"  Residential zoning codes found: {', '.join(residential_zones)}")
 
     return residential_parcels_gdf, non_residential_parcels_gdf
@@ -215,12 +221,12 @@ def identify_dwelling_buildings(buildings_gdf):
     print(f"  Buildings with USE data: {buildings_gdf['USE'].notna().sum()}")
 
     # Filter to only household buildings
-    dwelling_buildings_gdf = buildings_gdf[buildings_gdf['USE'] == 'Household'].copy()
+    dwelling_buildings_gdf = buildings_gdf[buildings_gdf["USE"] == "Household"].copy()
 
     print(f"  Dwelling buildings (USE='Household'): {len(dwelling_buildings_gdf)}")
 
     # Show sample of unique USE types for context
-    use_counts = buildings_gdf['USE'].value_counts().head(10)
+    use_counts = buildings_gdf["USE"].value_counts().head(10)
     print("\n  Top 10 building use types:")
     for use_type, count in use_counts.items():
         print(f"    - {use_type}: {count}")
@@ -228,7 +234,9 @@ def identify_dwelling_buildings(buildings_gdf):
     return dwelling_buildings_gdf
 
 
-def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all_buildings_gdf):
+def calculate_allowed_areas(
+    residential_parcels_gdf, dwelling_buildings_gdf, all_buildings_gdf
+):
     """
     Calculate areas where chickens are allowed on residential parcels.
 
@@ -258,17 +266,16 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all
     # Keep all columns to maintain index_right convention
     dwellings_on_parcels = gpd.sjoin(
         dwelling_buildings_gdf,
-        residential_parcels_gdf[['OBJECTID', 'geometry']],
-        how='inner',
-        predicate='within'
+        residential_parcels_gdf[["OBJECTID", "geometry"]],
+        how="inner",
+        predicate="within",
     )
     print(f"    - {len(dwellings_on_parcels)} dwellings matched to residential parcels")
 
     # Pre-compute dwelling-to-parcel mapping for fast lookup
     print("  Building dwelling-to-parcel lookup...")
     parcel_to_dwellings = (
-        dwellings_on_parcels
-        .groupby('OBJECTID_right')['FACILITYID']
+        dwellings_on_parcels.groupby("OBJECTID_right")["FACILITYID"]
         .apply(set)
         .to_dict()
     )
@@ -281,8 +288,7 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all
     # Also create mapping of parcel to whether it has multi-unit buildings
     print("  Identifying multi-unit buildings...")
     parcel_to_has_multiunit = (
-        dwellings_on_parcels
-        .groupby('OBJECTID_right')['UNITS']
+        dwellings_on_parcels.groupby("OBJECTID_right")["UNITS"]
         .apply(lambda units: (units > 1).any())
         .to_dict()
     )
@@ -291,28 +297,29 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all
 
     # Create 200-foot buffers around all dwellings
     print("  Creating 200-foot buffers around all dwellings...")
-    dwelling_buffers = dwelling_buildings_gdf.geometry.buffer(200, cap_style='round')
+    dwelling_buffers = dwelling_buildings_gdf.geometry.buffer(200, cap_style="round")
 
     # Create GeoDataFrame of buffers for spatial indexing
     dwelling_buffers_gdf = gpd.GeoDataFrame(
-        dwelling_buildings_gdf[['FACILITYID']].copy(),
+        dwelling_buildings_gdf[["FACILITYID"]].copy(),
         geometry=dwelling_buffers,
-        crs=dwelling_buildings_gdf.crs
+        crs=dwelling_buildings_gdf.crs,
     )
     print(f"    - Created {len(dwelling_buffers_gdf)} buffers")
 
     # Spatial join: which buffers intersect which parcels (uses spatial index)
     print("  Finding buffers that intersect parcels (using spatial index)...")
     # Reset index of parcels to ensure OBJECTID is a column, not index
-    parcels_for_join = residential_parcels_gdf[['OBJECTID', 'geometry']].reset_index(drop=True)
+    parcels_for_join = residential_parcels_gdf[["OBJECTID", "geometry"]].reset_index(
+        drop=True
+    )
 
     buffers_intersecting_parcels = gpd.sjoin(
-        dwelling_buffers_gdf,
-        parcels_for_join,
-        how='inner',
-        predicate='intersects'
+        dwelling_buffers_gdf, parcels_for_join, how="inner", predicate="intersects"
     )
-    print(f"    - Found {len(buffers_intersecting_parcels)} buffer-parcel intersections")
+    print(
+        f"    - Found {len(buffers_intersecting_parcels)} buffer-parcel intersections"
+    )
 
     # Group by parcel for efficient processing
     print("  Processing parcels in groups...")
@@ -323,7 +330,11 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all
 
     # After sjoin, OBJECTID from the right dataframe should be in the result
     # Check if we need to use OBJECTID or OBJECTID_right
-    parcel_id_col = 'OBJECTID' if 'OBJECTID_right' not in buffers_intersecting_parcels.columns else 'OBJECTID_right'
+    parcel_id_col = (
+        "OBJECTID"
+        if "OBJECTID_right" not in buffers_intersecting_parcels.columns
+        else "OBJECTID_right"
+    )
 
     for parcel_id, group in buffers_intersecting_parcels.groupby(parcel_id_col):
         # Get dwellings that are ON this parcel
@@ -341,7 +352,7 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all
             # Single dwelling, single unit: exclude buffer from the one dwelling on this parcel
             # (Owner-occupied single-family home - can keep chickens within 200ft of own dwelling)
             buffer_indices = group[
-                ~group['FACILITYID'].isin(dwellings_on_this_parcel)
+                ~group["FACILITYID"].isin(dwellings_on_this_parcel)
             ].index
         else:
             # Multiple occupancies: include ALL buffers, even those from dwellings on same parcel
@@ -350,20 +361,22 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all
 
         # Store the geometries of buffers to subtract
         if len(buffer_indices) > 0:
-            parcel_to_prohibited_buffers[parcel_id] = dwelling_buffers_gdf.loc[buffer_indices, 'geometry']
+            parcel_to_prohibited_buffers[parcel_id] = dwelling_buffers_gdf.loc[
+                buffer_indices, "geometry"
+            ]
 
     # Spatial join: find which buildings are on which parcels
     print("  Finding buildings on parcels...")
     buildings_on_parcels = gpd.sjoin(
         all_buildings_gdf,
-        residential_parcels_gdf[['OBJECTID', 'geometry']],
-        how='inner',
-        predicate='intersects'
+        residential_parcels_gdf[["OBJECTID", "geometry"]],
+        how="inner",
+        predicate="intersects",
     )
 
     # Create mapping of parcel to building footprints
     parcel_to_buildings = {}
-    for parcel_id, group in buildings_on_parcels.groupby('OBJECTID_right'):
+    for parcel_id, group in buildings_on_parcels.groupby("OBJECTID_right"):
         # The geometry column in the group is already the building geometries
         parcel_to_buildings[parcel_id] = group.geometry
 
@@ -371,7 +384,7 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all
 
     # Process each residential parcel
     for idx, parcel in residential_parcels_gdf.iterrows():
-        parcel_id = parcel['OBJECTID']
+        parcel_id = parcel["OBJECTID"]
 
         # Step 0: Check if parcel has any household buildings
         # Can't keep backyard chickens without a household on the parcel
@@ -379,7 +392,9 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all
 
         if not has_household:
             # No household on this parcel - entire parcel is prohibited
-            allowed_geom = parcel.geometry.difference(parcel.geometry)  # Creates empty geometry
+            allowed_geom = parcel.geometry.difference(
+                parcel.geometry
+            )  # Creates empty geometry
             prohibited_geom = parcel.geometry
         else:
             # Get buffers that should be subtracted from this parcel
@@ -397,7 +412,10 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all
 
             # Step 2: Also subtract all building footprints (chickens are kept outdoors)
             buildings_on_this_parcel = parcel_to_buildings.get(parcel_id)
-            if buildings_on_this_parcel is not None and len(buildings_on_this_parcel) > 0:
+            if (
+                buildings_on_this_parcel is not None
+                and len(buildings_on_this_parcel) > 0
+            ):
                 # Union all building footprints on this parcel
                 buildings_union = buildings_on_this_parcel.union_all()
                 # Subtract building footprints from allowed area
@@ -406,12 +424,14 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all
             # Calculate prohibited area
             prohibited_geom = parcel.geometry.difference(allowed_geom)
 
-        results.append({
-            'parcel_id': parcel_id,
-            'geometry': parcel.geometry,
-            'allowed_geometry': allowed_geom,
-            'prohibited_geometry': prohibited_geom
-        })
+        results.append(
+            {
+                "parcel_id": parcel_id,
+                "geometry": parcel.geometry,
+                "allowed_geometry": allowed_geom,
+                "prohibited_geometry": prohibited_geom,
+            }
+        )
 
     # Create results GeoDataFrame
     results_gdf = gpd.GeoDataFrame(results, crs=residential_parcels_gdf.crs)
@@ -420,14 +440,16 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, all
     print(f"    - Total residential parcels processed: {len(results_gdf)}")
 
     # Count parcels with some allowed area
-    has_allowed = results_gdf['allowed_geometry'].apply(lambda g: not g.is_empty).sum()
+    has_allowed = results_gdf["allowed_geometry"].apply(lambda g: not g.is_empty).sum()
     print(f"    - Parcels with some allowed area: {has_allowed}")
     print(f"    - Parcels with no allowed area: {len(results_gdf) - has_allowed}")
 
     return results_gdf
 
 
-def create_visualization_layers(boundary_gdf, residential_parcels_gdf, non_residential_parcels_gdf, results_gdf):
+def create_visualization_layers(
+    boundary_gdf, residential_parcels_gdf, non_residential_parcels_gdf, results_gdf
+):
     """
     Create separate GeoDataFrames for each visualization layer.
 
@@ -447,15 +469,15 @@ def create_visualization_layers(boundary_gdf, residential_parcels_gdf, non_resid
     print(f"  - Boundary layer: {len(boundary_layer)} features")
 
     # Layer 2: Non-residential parcels
-    non_res_layer = non_residential_parcels_gdf[['geometry']].copy()
+    non_res_layer = non_residential_parcels_gdf[["geometry"]].copy()
     print(f"  - Non-residential layer: {len(non_res_layer)} features")
 
     # Layer 3: Prohibited residential areas
     # Extract prohibited geometries from results
     prohibited_geoms = []
     for idx, row in results_gdf.iterrows():
-        if not row['prohibited_geometry'].is_empty:
-            prohibited_geoms.append({'geometry': row['prohibited_geometry']})
+        if not row["prohibited_geometry"].is_empty:
+            prohibited_geoms.append({"geometry": row["prohibited_geometry"]})
 
     prohibited_layer = gpd.GeoDataFrame(prohibited_geoms, crs=results_gdf.crs)
     print(f"  - Prohibited residential layer: {len(prohibited_layer)} features")
@@ -464,8 +486,8 @@ def create_visualization_layers(boundary_gdf, residential_parcels_gdf, non_resid
     # Extract allowed geometries from results
     allowed_geoms = []
     for idx, row in results_gdf.iterrows():
-        if not row['allowed_geometry'].is_empty:
-            allowed_geoms.append({'geometry': row['allowed_geometry']})
+        if not row["allowed_geometry"].is_empty:
+            allowed_geoms.append({"geometry": row["allowed_geometry"]})
 
     allowed_layer = gpd.GeoDataFrame(allowed_geoms, crs=results_gdf.crs)
     print(f"  - Allowed residential layer: {len(allowed_layer)} features")
@@ -475,7 +497,9 @@ def create_visualization_layers(boundary_gdf, residential_parcels_gdf, non_resid
     return boundary_layer, non_res_layer, prohibited_layer, allowed_layer
 
 
-def generate_map(boundary_layer, non_res_layer, prohibited_layer, allowed_layer, output_dir):
+def generate_map(
+    boundary_layer, non_res_layer, prohibited_layer, allowed_layer, output_dir
+):
     """
     Generate a map visualization showing chicken zoning areas.
 
@@ -501,42 +525,49 @@ def generate_map(boundary_layer, non_res_layer, prohibited_layer, allowed_layer,
     # Plot layers in order (bottom to top)
     # Layer 1: Non-residential parcels (light gray)
     if len(non_res_layer) > 0:
-        non_res_layer.plot(ax=ax, color='#CCCCCC', edgecolor='none')
+        non_res_layer.plot(ax=ax, color="#CCCCCC", edgecolor="none")
         print(f"  - Plotted {len(non_res_layer)} non-residential parcels")
 
     # Layer 2: Prohibited residential areas (dark gray)
     if len(prohibited_layer) > 0:
-        prohibited_layer.plot(ax=ax, color='#666666', edgecolor='none')
+        prohibited_layer.plot(ax=ax, color="#666666", edgecolor="none")
         print(f"  - Plotted {len(prohibited_layer)} prohibited areas")
 
     # Layer 3: Allowed residential areas (bright green)
     if len(allowed_layer) > 0:
-        allowed_layer.plot(ax=ax, color='#4CAF50', edgecolor='none')
+        allowed_layer.plot(ax=ax, color="#4CAF50", edgecolor="none")
         print(f"  - Plotted {len(allowed_layer)} allowed areas")
 
     # Layer 4: Boundary outline (black, 2pt line)
-    boundary_layer.plot(ax=ax, facecolor='none', edgecolor='black', linewidth=2)
-    print(f"  - Plotted city boundary")
+    boundary_layer.plot(ax=ax, facecolor="none", edgecolor="black", linewidth=2)
+    print("  - Plotted city boundary")
 
     # Add title
-    ax.set_title('Alexandria, VA: Backyard Chicken Zoning', fontsize=20, fontweight='bold', pad=20)
+    ax.set_title(
+        "Alexandria, VA: Backyard Chicken Zoning",
+        fontsize=20,
+        fontweight="bold",
+        pad=20,
+    )
 
     # Create manual legend entries
     legend_elements = [
-        Patch(facecolor='#4CAF50', edgecolor='none', label='Allowed for chickens'),
-        Patch(facecolor='#666666', edgecolor='none', label='Prohibited residential areas'),
-        Patch(facecolor='#CCCCCC', edgecolor='none', label='Non-residential areas'),
-        Patch(facecolor='none', edgecolor='black', linewidth=2, label='City boundary')
+        Patch(facecolor="#4CAF50", edgecolor="none", label="Allowed for chickens"),
+        Patch(
+            facecolor="#666666", edgecolor="none", label="Prohibited residential areas"
+        ),
+        Patch(facecolor="#CCCCCC", edgecolor="none", label="Non-residential areas"),
+        Patch(facecolor="none", edgecolor="black", linewidth=2, label="City boundary"),
     ]
 
     # Add legend with manual entries
-    ax.legend(handles=legend_elements, loc='lower left', fontsize=12, framealpha=0.9)
+    ax.legend(handles=legend_elements, loc="lower left", fontsize=12, framealpha=0.9)
 
     # Remove axis ticks and labels for clean map
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.set_xlabel('')
-    ax.set_ylabel('')
+    ax.set_xlabel("")
+    ax.set_ylabel("")
 
     # Remove axis spines for cleaner look
     for spine in ax.spines.values():
@@ -546,13 +577,13 @@ def generate_map(boundary_layer, non_res_layer, prohibited_layer, allowed_layer,
     plt.tight_layout()
 
     # Save as PNG
-    png_path = output_dir / 'chicken_map.png'
-    plt.savefig(png_path, dpi=300, bbox_inches='tight')
+    png_path = output_dir / "chicken_map.png"
+    plt.savefig(png_path, dpi=300, bbox_inches="tight")
     print(f"\n  Saved PNG to: {png_path}")
 
     # Save as SVG
-    svg_path = output_dir / 'chicken_map.svg'
-    plt.savefig(svg_path, format='svg', bbox_inches='tight')
+    svg_path = output_dir / "chicken_map.svg"
+    plt.savefig(svg_path, format="svg", bbox_inches="tight")
     print(f"  Saved SVG to: {svg_path}")
 
     print("  Map generation complete!")
@@ -582,17 +613,19 @@ def export_shapefile(results_gdf, output_path):
     # Export the complete results GeoDataFrame
     # Note: Shapefiles have column name limitations (10 chars max), so we'll use shorter names
     export_gdf = results_gdf.copy()
-    export_gdf = export_gdf.rename(columns={
-        'parcel_id': 'PARCEL_ID',
-        'allowed_geometry': 'ALLOWED_GM',
-        'prohibited_geometry': 'PROHIB_GM'
-    })
+    export_gdf = export_gdf.rename(
+        columns={
+            "parcel_id": "PARCEL_ID",
+            "allowed_geometry": "ALLOWED_GM",
+            "prohibited_geometry": "PROHIB_GM",
+        }
+    )
 
     # Export to shapefile
     export_gdf.to_file(output_path)
 
     print(f"  Exported {len(export_gdf)} parcels to: {output_path}")
-    print(f"  Shapefile includes: geometry, PARCEL_ID, ALLOWED_GM, PROHIB_GM")
+    print("  Shapefile includes: geometry, PARCEL_ID, ALLOWED_GM, PROHIB_GM")
 
     return output_path
 
@@ -620,18 +653,27 @@ def main():
     dwelling_buildings_gdf = identify_dwelling_buildings(buildings_gdf)
 
     # Step 5: Calculate allowed areas (core logic)
-    results_gdf = calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf, buildings_gdf)
+    results_gdf = calculate_allowed_areas(
+        residential_parcels_gdf, dwelling_buildings_gdf, buildings_gdf
+    )
 
     # Step 6: Create visualization layers
-    boundary_layer, non_res_layer, prohibited_layer, allowed_layer = create_visualization_layers(
-        boundary_gdf, residential_parcels_gdf, non_residential_parcels_gdf, results_gdf
+    boundary_layer, non_res_layer, prohibited_layer, allowed_layer = (
+        create_visualization_layers(
+            boundary_gdf,
+            residential_parcels_gdf,
+            non_residential_parcels_gdf,
+            results_gdf,
+        )
     )
 
     # Step 7: Generate map outputs
     output_dir = Path(__file__).parent.parent / "output"
 
     # Generate map visualization
-    fig = generate_map(boundary_layer, non_res_layer, prohibited_layer, allowed_layer, output_dir)
+    generate_map(
+        boundary_layer, non_res_layer, prohibited_layer, allowed_layer, output_dir
+    )
 
     # Export shapefile
     shapefile_path = output_dir / "chicken_zones.shp"
