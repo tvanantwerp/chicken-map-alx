@@ -164,10 +164,18 @@ def identify_residential_parcels(parcels_gdf, land_use_df):
     """
     print("\nIdentifying residential parcels...")
 
+    # Normalize zoning codes by removing spaces to handle mismatches
+    # (e.g., "R 8" in shapefile vs "R8" in CSV)
+    parcels_normalized = parcels_gdf.copy()
+    parcels_normalized['ZONING_NORMALIZED'] = parcels_normalized['ZONING'].str.replace(' ', '', regex=False)
+
+    land_use_normalized = land_use_df.copy()
+    land_use_normalized['ZONING_NORMALIZED'] = land_use_normalized['ZONING'].str.replace(' ', '', regex=False)
+
     # Join parcels with land use codes to get descriptions
-    parcels_with_use = parcels_gdf.merge(
-        land_use_df[['ZONING', 'DESCRIPTION']],
-        on='ZONING',
+    parcels_with_use = parcels_normalized.merge(
+        land_use_normalized[['ZONING_NORMALIZED', 'DESCRIPTION']],
+        on='ZONING_NORMALIZED',
         how='left'
     )
 
@@ -321,7 +329,7 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf):
         # Calculate allowed area
         if external_buffers is not None and len(external_buffers) > 0:
             # Union only the relevant external buffers
-            external_buffers_union = external_buffers.unary_union
+            external_buffers_union = external_buffers.union_all()
             # Subtract external buffers from parcel to get allowed area
             allowed_geom = parcel.geometry.difference(external_buffers_union)
         else:
