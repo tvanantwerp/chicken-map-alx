@@ -522,20 +522,25 @@ def generate_map(
     # Create figure with appropriate size (16x12 inches for good detail)
     fig, ax = plt.subplots(figsize=(16, 12))
 
+    # Define colors for map
+    permitted_color = "#dd13e1"
+    excluded_color = "#AFB7BE"
+    non_residential_color = "#d1d1d1"
+
     # Plot layers in order (bottom to top)
     # Layer 1: Non-residential parcels (light gray)
     if len(non_res_layer) > 0:
-        non_res_layer.plot(ax=ax, color="#CCCCCC", edgecolor="none")
+        non_res_layer.plot(ax=ax, color=non_residential_color, edgecolor="none")
         print(f"  - Plotted {len(non_res_layer)} non-residential parcels")
 
     # Layer 2: Prohibited residential areas (dark gray)
     if len(prohibited_layer) > 0:
-        prohibited_layer.plot(ax=ax, color="#666666", edgecolor="none")
+        prohibited_layer.plot(ax=ax, color=excluded_color, edgecolor="none")
         print(f"  - Plotted {len(prohibited_layer)} prohibited areas")
 
     # Layer 3: Allowed residential areas (bright green)
     if len(allowed_layer) > 0:
-        allowed_layer.plot(ax=ax, color="#4CAF50", edgecolor="none")
+        allowed_layer.plot(ax=ax, color=permitted_color, edgecolor="none")
         print(f"  - Plotted {len(allowed_layer)} allowed areas")
 
     # Layer 4: Boundary outline (black, 2pt line)
@@ -552,11 +557,19 @@ def generate_map(
 
     # Create manual legend entries
     legend_elements = [
-        Patch(facecolor="#4CAF50", edgecolor="none", label="Allowed for chickens"),
         Patch(
-            facecolor="#666666", edgecolor="none", label="Prohibited residential areas"
+            facecolor=permitted_color, edgecolor="none", label="Allowed for chickens"
         ),
-        Patch(facecolor="#CCCCCC", edgecolor="none", label="Non-residential areas"),
+        Patch(
+            facecolor=excluded_color,
+            edgecolor="none",
+            label="Prohibited residential areas",
+        ),
+        Patch(
+            facecolor=non_residential_color,
+            edgecolor="none",
+            label="Non-residential areas",
+        ),
         Patch(facecolor="none", edgecolor="black", linewidth=2, label="City boundary"),
     ]
 
