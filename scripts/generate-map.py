@@ -153,7 +153,11 @@ def identify_residential_parcels(parcels_gdf, land_use_df):
     """
     Identify residential and non-residential parcels based on zoning codes.
 
-    Parcels are classified as residential if their DESCRIPTION contains "residential" (case-insensitive).
+    Parcels are classified as residential if:
+    1. Their DESCRIPTION contains "residential" (case-insensitive), OR
+    2. Their zoning code is W-1 (Waterfront Mixed Use Zone), OR
+    3. Their zoning code is KR (King Street Urban Retail Zone), OR
+    4. Their zoning code starts with "CDD" (Coordinated Development Districts)
 
     Args:
         parcels_gdf: GeoDataFrame with parcel boundaries and ZONING column
@@ -185,10 +189,20 @@ def identify_residential_parcels(parcels_gdf, land_use_df):
 
     print(f"  Total parcels: {len(parcels_with_use)}")
 
-    # Filter to residential parcels (DESCRIPTION contains "residential", case-insensitive)
-    residential_mask = parcels_with_use["DESCRIPTION"].str.contains(
-        "residential", case=False, na=False
+    # Filter to residential parcels using multiple criteria:
+    # 1. DESCRIPTION contains "residential", OR
+    # 2. ZONING is W-1, OR
+    # 3. ZONING is KR, OR
+    # 4. ZONING starts with "CDD"
+    residential_mask = (
+        parcels_with_use["DESCRIPTION"].str.contains(
+            "residential", case=False, na=False
+        )
+        | parcels_with_use["ZONING_NORMALIZED"].str.upper().eq("W-1")
+        | parcels_with_use["ZONING_NORMALIZED"].str.upper().eq("KR")
+        | parcels_with_use["ZONING_NORMALIZED"].str.upper().str.startswith("CDD")
     )
+
     residential_parcels_gdf = parcels_with_use[residential_mask].copy()
     non_residential_parcels_gdf = parcels_with_use[~residential_mask].copy()
 
@@ -628,6 +642,130 @@ def generate_map(
     return fig
 
 
+def generate_diagnostic_map(
+    boundary_gdf, all_buildings_gdf, dwelling_buildings_gdf, output_dir
+):
+    """
+    Generate a diagnostic map showing building outlines and 200-foot buffers around dwellings.
+
+    This visualization helps verify that the buffer logic is working correctly.
+
+    Args:
+        boundary_gdf: GeoDataFrame with city boundary
+        all_buildings_gdf: GeoDataFrame with all building footprints
+        dwelling_buildings_gdf: GeoDataFrame with dwelling buildings only
+        output_dir: Path to directory for saving output files
+
+    Returns:
+        matplotlib.figure.Figure: The generated figure object
+    """
+    print("\nGenerating diagnostic map...")
+
+    # Create output directory if it doesn't exist
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create 200-foot buffers around dwelling buildings
+    print("  Creating 200-foot buffers...")
+    dwelling_buffers = dwelling_buildings_gdf.geometry.buffer(200, cap_style="round")
+    dwelling_buffers_gdf = gpd.GeoDataFrame(
+        dwelling_buildings_gdf[["FACILITYID"]].copy(),
+        geometry=dwelling_buffers,
+        crs=dwelling_buildings_gdf.crs,
+    )
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(16, 12))
+
+    # Define colors
+    buffer_color = "#ff9999"  # Light red for buffers
+    dwelling_color = "#ff0000"  # Red for dwelling buildings
+    building_color = "#666666"  # Gray for all other buildings
+    boundary_color = "#000000"  # Black for boundary
+
+    # Plot layers in order (bottom to top)
+    # Layer 1: 200-foot buffers (semi-transparent)
+    if len(dwelling_buffers_gdf) > 0:
+        dwelling_buffers_gdf.plot(
+            ax=ax, color=buffer_color, alpha=0.3, edgecolor="red", linewidth=0.5
+        )
+        print(f"  - Plotted {len(dwelling_buffers_gdf)} dwelling buffers")
+
+    # Layer 2: All buildings (gray outlines)
+    if len(all_buildings_gdf) > 0:
+        all_buildings_gdf.plot(
+            ax=ax, facecolor="none", edgecolor=building_color, linewidth=0.5
+        )
+        print(f"  - Plotted {len(all_buildings_gdf)} building outlines")
+
+    # Layer 3: Dwelling buildings (red, filled)
+    if len(dwelling_buildings_gdf) > 0:
+        dwelling_buildings_gdf.plot(
+            ax=ax, color=dwelling_color, edgecolor="darkred", linewidth=0.5
+        )
+        print(f"  - Plotted {len(dwelling_buildings_gdf)} dwelling buildings")
+
+    # Layer 4: Boundary outline
+    boundary_gdf.plot(ax=ax, facecolor="none", edgecolor=boundary_color, linewidth=2)
+    print("  - Plotted city boundary")
+
+    # Add title
+    ax.set_title(
+        "Diagnostic Map: Buildings and 200-foot Dwelling Buffers\n"
+        f"{len(dwelling_buildings_gdf):,} dwelling buildings with 200-foot prohibited zones",
+        fontsize=20,
+        fontweight="bold",
+        pad=20,
+    )
+
+    # Create legend
+    legend_elements = [
+        Patch(
+            facecolor=buffer_color,
+            edgecolor="red",
+            alpha=0.3,
+            label="200-foot buffer around dwellings",
+        ),
+        Patch(
+            facecolor=dwelling_color,
+            edgecolor="darkred",
+            label="Dwelling buildings (households/dorms)",
+        ),
+        Patch(
+            facecolor="none",
+            edgecolor=building_color,
+            label="All building outlines",
+        ),
+        Patch(
+            facecolor="none", edgecolor=boundary_color, linewidth=2, label="City boundary"
+        ),
+    ]
+
+    ax.legend(handles=legend_elements, loc="lower left", fontsize=12, framealpha=0.9)
+
+    # Remove axis ticks and labels
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+
+    # Remove axis spines
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    # Tight layout
+    plt.tight_layout()
+
+    # Save as PNG
+    png_path = output_dir / "diagnostic_buildings_buffers.png"
+    plt.savefig(png_path, dpi=300, bbox_inches="tight")
+    print(f"\n  Saved diagnostic map to: {png_path}")
+
+    print("  Diagnostic map generation complete!")
+
+    return fig
+
+
 def export_shapefile(results_gdf, output_path):
     """
     Export the complete results GeoDataFrame as a shapefile.
@@ -707,9 +845,14 @@ def main():
     # Step 7: Generate map outputs
     output_dir = Path(__file__).parent.parent / "output"
 
-    # Generate map visualization
+    # Generate main map visualization
     generate_map(
         boundary_layer, non_res_layer, prohibited_layer, allowed_layer, results_gdf, output_dir
+    )
+
+    # Generate diagnostic map
+    generate_diagnostic_map(
+        boundary_gdf, buildings_gdf, dwelling_buildings_gdf, output_dir
     )
 
     # Export shapefile
@@ -723,6 +866,7 @@ def main():
     print("\nGenerated files:")
     print(f"  - {output_dir / 'chicken_map.png'}")
     print(f"  - {output_dir / 'chicken_map.svg'}")
+    print(f"  - {output_dir / 'diagnostic_buildings_buffers.png'}")
     print(f"  - {output_dir / 'chicken_zones.shp'} (+ associated files)")
     print("=" * 60)
 
