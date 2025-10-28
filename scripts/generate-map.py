@@ -428,37 +428,92 @@ def generate_map(boundary_layer, non_res_layer, prohibited_layer, allowed_layer,
     return fig
 
 
+def export_shapefile(results_gdf, output_path):
+    """
+    Export the complete results GeoDataFrame as a shapefile.
+
+    Args:
+        results_gdf: GeoDataFrame with parcel_id, geometry, allowed_geometry, prohibited_geometry
+        output_path: Path where the shapefile should be saved
+
+    Returns:
+        Path: The output path where the shapefile was saved
+    """
+    print("\nExporting results to shapefile...")
+
+    # Ensure output path is a Path object
+    output_path = Path(output_path)
+
+    # Create output directory if it doesn't exist
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Export the complete results GeoDataFrame
+    # Note: Shapefiles have column name limitations (10 chars max), so we'll use shorter names
+    export_gdf = results_gdf.copy()
+    export_gdf = export_gdf.rename(columns={
+        'parcel_id': 'PARCEL_ID',
+        'allowed_geometry': 'ALLOWED_GM',
+        'prohibited_geometry': 'PROHIB_GM'
+    })
+
+    # Export to shapefile
+    export_gdf.to_file(output_path)
+
+    print(f"  Exported {len(export_gdf)} parcels to: {output_path}")
+    print(f"  Shapefile includes: geometry, PARCEL_ID, ALLOWED_GM, PROHIB_GM")
+
+    return output_path
+
+
 def main():
     """Main entry point for the script."""
+    print("=" * 60)
+    print("ALEXANDRIA CHICKEN MAP GENERATOR")
+    print("=" * 60)
+
+    # Step 1: Read all data files
     land_use_df, boundary_gdf, parcels_gdf, buildings_gdf = read_data()
 
-    # Display basic info about the data
-    print("\n" + "=" * 60)
-    print("LAND USE CODES")
-    print("=" * 60)
-    print(land_use_df.head())
-    print(f"\nColumns: {list(land_use_df.columns)}")
+    # Step 2: Prepare data (standardize CRS, merge building use data)
+    land_use_df, boundary_gdf, parcels_gdf, buildings_gdf = prepare_data(
+        land_use_df, boundary_gdf, parcels_gdf, buildings_gdf
+    )
+
+    # Step 3: Identify residential parcels
+    residential_parcels_gdf, non_residential_parcels_gdf = identify_residential_parcels(
+        parcels_gdf, land_use_df
+    )
+
+    # Step 4: Identify dwelling buildings
+    dwelling_buildings_gdf = identify_dwelling_buildings(buildings_gdf)
+
+    # Step 5: Calculate allowed areas (core logic)
+    results_gdf = calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf)
+
+    # Step 6: Create visualization layers
+    boundary_layer, non_res_layer, prohibited_layer, allowed_layer = create_visualization_layers(
+        boundary_gdf, residential_parcels_gdf, non_residential_parcels_gdf, results_gdf
+    )
+
+    # Step 7: Generate map outputs
+    output_dir = Path(__file__).parent.parent / "output"
+
+    # Generate map visualization
+    fig = generate_map(boundary_layer, non_res_layer, prohibited_layer, allowed_layer, output_dir)
+
+    # Export shapefile
+    shapefile_path = output_dir / "chicken_zones.shp"
+    export_shapefile(results_gdf, shapefile_path)
 
     print("\n" + "=" * 60)
-    print("BOUNDARY")
+    print("PROCESSING COMPLETE!")
     print("=" * 60)
-    print(boundary_gdf.head())
-    print(f"\nColumns: {list(boundary_gdf.columns)}")
-    print(f"CRS: {boundary_gdf.crs}")
-
-    print("\n" + "=" * 60)
-    print("PARCELS")
+    print(f"Output directory: {output_dir}")
+    print("\nGenerated files:")
+    print(f"  - {output_dir / 'chicken_map.png'}")
+    print(f"  - {output_dir / 'chicken_map.svg'}")
+    print(f"  - {output_dir / 'chicken_zones.shp'} (+ associated files)")
     print("=" * 60)
-    print(parcels_gdf.head())
-    print(f"\nColumns: {list(parcels_gdf.columns)}")
-    print(f"CRS: {parcels_gdf.crs}")
-
-    print("\n" + "=" * 60)
-    print("BUILDINGS")
-    print("=" * 60)
-    print(buildings_gdf.head())
-    print(f"\nColumns: {list(buildings_gdf.columns)}")
-    print(f"CRS: {buildings_gdf.crs}")
 
 
 if __name__ == "__main__":
