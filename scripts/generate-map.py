@@ -241,6 +241,7 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf):
 
     # Spatial join: which dwellings are on which parcels
     print("  Performing spatial join of dwellings to parcels...")
+
     dwellings_on_parcels = gpd.sjoin(
         dwelling_buildings_gdf,
         residential_parcels_gdf[['OBJECTID', 'geometry']],
@@ -262,8 +263,9 @@ def calculate_allowed_areas(residential_parcels_gdf, dwelling_buildings_gdf):
         parcel_id = parcel['OBJECTID']
 
         # Get dwellings that ARE on this parcel
+        # After sjoin, the right dataframe's OBJECTID becomes OBJECTID_right
         dwellings_on_this_parcel = dwellings_on_parcels[
-            dwellings_on_parcels['OBJECTID'] == parcel_id
+            dwellings_on_parcels['OBJECTID_right'] == parcel_id
         ]['FACILITYID'].tolist()
 
         # Get indices of dwellings that are NOT on this parcel
