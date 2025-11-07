@@ -580,14 +580,18 @@ def generate_map(
     print("  - Plotted city boundary")
 
     # Add title with subtitle showing the statistics
-    # Calculate statistics dynamically from the data
-    allowed_count = len(allowed_layer)
-    total_residential = len(results_gdf)
-    percentage = (allowed_count / total_residential) * 100
+    # Calculate area statistics (convert from square feet to acres: 1 acre = 43,560 sq ft)
+    allowed_area_sqft = allowed_layer.geometry.area.sum() if len(allowed_layer) > 0 else 0
+    allowed_area_acres = allowed_area_sqft / 43560
+
+    total_residential_area_sqft = results_gdf.geometry.area.sum()
+    total_residential_area_acres = total_residential_area_sqft / 43560
+
+    percentage = (allowed_area_sqft / total_residential_area_sqft) * 100 if total_residential_area_sqft > 0 else 0
 
     ax.set_title(
         f"Alexandria, VA: Backyard Chicken Zoning\n"
-        f"Only {allowed_count} of {total_residential:,} residential parcels ({percentage:.3f}%) technically permit chickens",
+        f"Only {allowed_area_acres:.1f} of {total_residential_area_acres:,.0f} residential acres ({percentage:.3f}%) technically permit chickens",
         fontsize=20,
         fontweight="bold",
         pad=20,
